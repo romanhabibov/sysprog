@@ -20,6 +20,7 @@ main(int argc, char *argv[])
 		tasks[i].id = i;
 		tasks[i].is_finished = false;
 		strcpy(tasks[i].file_name, argv[i + 1]);
+		tasks[i].number_of_numbers = 0;
 
 		setjmp(tasks[i].env);
 	}

@@ -1,17 +1,17 @@
 #include "functions.h"
 #include <stdbool.h>
 
-/* Convention. */
-#define maximum_number_of_numbers_in_file 1024
-
 size_t number_of_files = 0;
 struct task *tasks;
 static int current_task_i = 0;
+static size_t old_i = 0;
 
-#define check_resched {						 \
-	int old_i = current_task_i;				 \
-	current_task_i = (current_task_i + 1) % number_of_files; \
-	if (setjmp(tasks[old_i].env) == 0)			 \
+#define check_resched {							 \
+	size_t old_i = current_task_i;					 \
+	do								 \
+		current_task_i = (current_task_i + 1) % number_of_files; \
+	while(tasks[current_task_i].is_finished);			 \
+	if (setjmp(tasks[old_i].env) == 0)				 \
 		longjmp(tasks[current_task_i].env, 1); }
 
 int
@@ -20,51 +20,50 @@ compare(const void *a, const void *b) {
 }
 
 void
-sort_file(const char *file_name) {
-	FILE *file;
-	file = fopen(file_name, "r");
-	if (!file) {
-		printf("Can't open file.\n");
-		return;
-	}
-
-	int buf = 0;
-	int *sort_buffer = (int*)malloc(sizeof(int) * maximum_number_of_numbers_in_file);
-	size_t number_of_numbers = 0;
-
-	while (fscanf(file, "%d", &buf) != EOF) {
-		sort_buffer[number_of_numbers] = buf;
-		number_of_numbers++;
-	}
-
-	fclose(file);
-
-	if (!number_of_numbers)
-		return;
-
-	qsort(sort_buffer, number_of_numbers, sizeof(int), compare);
-
-	file = fopen(file_name, "wb");
-	if (!file) {
-		printf("Can't open file.\n");
-		return;
-	}
-
-	for (size_t i = 0; i < number_of_numbers - 1; i++) {
-		fprintf(file, "%d ", sort_buffer[i]);
-	}
-
-	fprintf(file, "%d", sort_buffer[number_of_numbers - 1]);
-	fclose(file);
-
-	free(sort_buffer);
-}
-
-void
 coroutine()
 {
-	sort_file(tasks[current_task_i].file_name);
+	tasks[current_task_i].file = fopen(tasks[current_task_i].file_name,
+					   "r");
 	check_resched;
+	if (tasks[current_task_i].file == NULL) {
+		printf("Can't open file.\n");
+		tasks[current_task_i].is_finished = true;
+	}
+	check_resched;
+
+	int buf = 0;
+	check_resched;
+
+	while (fscanf(tasks[current_task_i].file, "%d", &buf) != EOF) {
+		tasks[current_task_i].sort_buffer\
+		[tasks[current_task_i].number_of_numbers] = buf;
+		tasks[current_task_i].number_of_numbers++;
+	}
+	check_resched;
+
+	fclose(tasks[current_task_i].file);
+	check_resched;
+
+	qsort(tasks[current_task_i].sort_buffer,
+	      tasks[current_task_i].number_of_numbers,
+	      sizeof(int), compare);
+	check_resched;
+
+	if (!tasks[current_task_i].number_of_numbers)
+		tasks[current_task_i].is_finished = true;
+	check_resched;
+
+	tasks[current_task_i].file = fopen(tasks[current_task_i].file_name,
+					   "wb");
+	check_resched;
+
+	for (size_t i = 0; i < tasks[current_task_i].number_of_numbers; i++)
+		fprintf(tasks[current_task_i].file, "%d ",
+			tasks[current_task_i].sort_buffer[i]);
+	check_resched;
+
+	fclose(tasks[current_task_i].file);
+
 	tasks[current_task_i].is_finished = true;
 	while (true) {
 		bool is_all_finished = true;
@@ -74,8 +73,9 @@ coroutine()
 				break;
 			}
 		}
-		if (is_all_finished)
+		if (is_all_finished) {
 			return;
+		}
 		check_resched;
 	}
 }
