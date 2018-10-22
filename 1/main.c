@@ -1,33 +1,45 @@
 #include "functions.h"
 #include <string.h>
 
+/* Convention. */
+#define memory_size 1048576
+
 extern size_t number_of_files;
 extern struct task *tasks;
 
 int
-main(int argc, char *argv[])
-{
+main(int argc, char *argv[]) {
 	if (argc <= 1) {
 		printf("No args.\n");
 		return 0;
 	}
 
 	number_of_files = argc - 1;
-	tasks = (struct task*)malloc(sizeof(struct task) * number_of_files);
+
+	/* Memory allocation. */
+	tasks = malloc(memory_size);
+	size_t size_of_tasks = sizeof(struct task) * number_of_files;
+	int *tail = (int *)tasks + size_of_tasks / sizeof(int) + 1;
+	tasks = (struct task *) tasks;
+	size_t size_of_tail \
+	= (memory_size - size_of_tasks) / number_of_files / sizeof(int);
 
 	/* Sort files with coroutines. */
 	for (size_t i = 0; i < number_of_files; i++) {
-		tasks[i].id = i;
+		tasks[i].sort_buffer = tail;
+		tail += size_of_tail;
 		tasks[i].is_finished = false;
 		strcpy(tasks[i].file_name, argv[i + 1]);
 		tasks[i].number_of_numbers = 0;
-
+		tasks[i].time_normal = .0;
+		tasks[i].time_current = clock();
 		setjmp(tasks[i].env);
 	}
 	coroutine();
 
 	/* Merge sorted files into "result.txt". */
-	pair *merge_buf = (pair*)malloc(sizeof(pair) * number_of_files);
+	struct pair *merge_buf \
+	= (struct pair*)malloc(sizeof(struct pair) * number_of_files);
 	FILE *file;
 	int buf = 0;
 	size_t already_read_files = 0;
@@ -52,22 +64,22 @@ main(int argc, char *argv[])
 	}
 
 	size_t number_for_merge = i - already_read_files - invalid_files;
-		FILE* result = fopen("result.txt", "wb");
+	FILE* result = fopen("result.txt", "wb");
 
-	if (number_for_merge){
+	if (number_for_merge) {
 		qsort(merge_buf, number_for_merge,
-		      sizeof(struct pair),
-		      (int(*) (const void*, const void*)) compare_pairs);
+			sizeof(struct pair),
+			(int(*) (const void*, const void*)) compare_pairs);
 
 		i = 0;
 		while (i < number_for_merge - 1) {
 			fprintf(result, "%d ", merge_buf[i].key);
 			if (fscanf(merge_buf[i].value, "%d", &merge_buf[i].key) \
-			    != EOF) {
+				!= EOF) {
 				qsort(merge_buf + i, number_for_merge - i,
-				      sizeof(struct pair),
-				      (int(*) (const void*, const void*)) \
-				      compare_pairs);
+					sizeof(struct pair),
+					(int(*) (const void*, const void*)) \
+					compare_pairs);
 			}
 			else
 				i++;
@@ -77,7 +89,7 @@ main(int argc, char *argv[])
 
 		/* Add last file, if any. */
 		while (fscanf(merge_buf[i].value, "%d", &buf) \
-		       != EOF)
+			!= EOF)
 			fprintf(result, "%d ", buf);
 	}
 
@@ -85,6 +97,8 @@ main(int argc, char *argv[])
 		fclose(merge_buf[i].value);
 	free(merge_buf);
 	fclose(result);
-	
+
+	printf("main %f\n", (double)(clock()) / CLOCKS_PER_SEC);
+	getchar();
 	return 0;
 }

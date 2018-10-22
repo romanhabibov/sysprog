@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 2.8)
 
 project(1)
 
-set(SOURCE_EXE main.cpp)
+set(SOURCE_EXE main.c)
 
-set(SOURCE_LIB functions.cpp)
+set(SOURCE_LIB functions.c)
 
 find_package(Curses REQUIRED)
 

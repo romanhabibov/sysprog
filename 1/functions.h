@@ -1,18 +1,20 @@
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-/* Convention. */
-#define maximum_number_of_numbers_in_file 1024
+#include <stdbool.h>
+#include <time.h>
 
 struct task {
-	int id;
+	size_t number_of_numbers;
+	int current_num;
+	size_t i;
+	double time_normal;
+	clock_t time_current;
 	jmp_buf env;
 	bool is_finished;
 	char file_name[128];
 	FILE *file;
-	size_t number_of_numbers;
-	int sort_buffer[maximum_number_of_numbers_in_file];
+	int *sort_buffer;
 };
 
 struct pair {
