@@ -1,11 +1,9 @@
 #include "functions.h"
 #include <string.h>
 
-/* Convention. */
-#define memory_size 1048576
-
 extern size_t number_of_files;
 extern struct task *tasks;
+extern size_t starting_buf_size;
 
 int
 main(int argc, char *argv[]) {
@@ -17,25 +15,28 @@ main(int argc, char *argv[]) {
 	number_of_files = argc - 1;
 
 	/* Memory allocation. */
-	tasks = malloc(memory_size);
-	size_t size_of_tasks = sizeof(struct task) * number_of_files;
-	int *tail = (int *)tasks + size_of_tasks / sizeof(int) + 1;
-	tasks = (struct task *) tasks;
-	size_t size_of_tail \
-	= (memory_size - size_of_tasks) / number_of_files / sizeof(int);
+	tasks = (struct task *)malloc(number_of_files * (sizeof(struct task)));
+	int **tails = (int **)malloc(number_of_files * (sizeof(int *)));
+	for (size_t i = 0; i < number_of_files; i++)
+		tails[i] = (int *)malloc(starting_buf_size * sizeof(int));
 
 	/* Sort files with coroutines. */
 	for (size_t i = 0; i < number_of_files; i++) {
-		tasks[i].sort_buffer = tail;
-		tail += size_of_tail;
+		tasks[i].buf_size = starting_buf_size;
+		tasks[i].sort_buffer = tails[i];
 		tasks[i].is_finished = false;
+		tasks[i].time_normal = .0;
 		strcpy(tasks[i].file_name, argv[i + 1]);
 		tasks[i].number_of_numbers = 0;
-		tasks[i].time_normal = .0;
 		tasks[i].time_current = clock();
 		setjmp(tasks[i].env);
 	}
 	coroutine();
+
+	for (size_t i = 0; i < number_of_files; i++)
+		free(tails[i]);
+	free(tails);
+	free(tasks);
 
 	/* Merge sorted files into "result.txt". */
 	struct pair *merge_buf \

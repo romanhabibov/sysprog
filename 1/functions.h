@@ -5,6 +5,7 @@
 #include <time.h>
 
 struct task {
+	size_t buf_size;
 	size_t number_of_numbers;
 	int current_num;
 	size_t i;

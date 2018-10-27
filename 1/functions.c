@@ -4,14 +4,13 @@ size_t number_of_files = 0;
 struct task *tasks;
 static int current_task_i = 0;
 static size_t old_i = 0;
+size_t starting_buf_size = 100000;
 
 #define check_resched {							 \
 	tasks[current_task_i].time_normal += (double)(clock() - tasks[current_task_i].time_current) / CLOCKS_PER_SEC; \
 	size_t old_i = current_task_i;					 \
-	do								 \
 		current_task_i = (current_task_i + 1) % number_of_files; \
-	while(tasks[current_task_i].is_finished);			 \
-	tasks[current_task_i].time_current = clock();			 \
+	tasks[current_task_i].time_current = clock(); \
 	if (setjmp(tasks[old_i].env) == 0)				 \
 		longjmp(tasks[current_task_i].env, 1); }
 
@@ -46,8 +45,7 @@ coroutine()
 		printf("Can't open file.\n");
 		check_resched;
 		tasks[current_task_i].is_finished = true;
-		printf("#%d %f\n", current_task_i,
-		       tasks[current_task_i].time_normal);
+		printf("#%d %f\n", current_task_i, tasks[current_task_i].time_normal);
 		is_all;
 	}
 	check_resched;
@@ -55,9 +53,19 @@ coroutine()
 	while (fscanf(tasks[current_task_i].file, "%d",
 		      &tasks[current_task_i].current_num) != EOF) {
 		check_resched;
-		tasks[current_task_i].sort_buffer\
-		[tasks[current_task_i].number_of_numbers] \
-		= tasks[current_task_i].current_num;
+		if (tasks[current_task_i].buf_size == tasks[current_task_i].number_of_numbers) {
+			check_resched;
+			tasks[current_task_i].buf_size += starting_buf_size;
+			check_resched;
+			tasks[current_task_i].sort_buffer \
+			= (int *)realloc(tasks[current_task_i].sort_buffer,
+					 (tasks[current_task_i].buf_size \
+					 + starting_buf_size) * sizeof(int));
+			check_resched;
+		}
+		check_resched;
+		tasks[current_task_i].sort_buffer[tasks[current_task_i]\
+		.number_of_numbers] = tasks[current_task_i].current_num;
 		check_resched;
 		tasks[current_task_i].number_of_numbers++;
 		check_resched;
