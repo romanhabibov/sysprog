@@ -46,7 +46,7 @@ main(int argc, char *argv[]) {
 	size_t already_read_files = 0;
 	size_t invalid_files = 0;
 	size_t i = 0;
-	for (i; i < number_of_files; i++) {
+	for (; i < number_of_files; i++) {
 		file = fopen(argv[i + 1], "r");
 		if (!file) {
 			printf("Can't open file.\n");
