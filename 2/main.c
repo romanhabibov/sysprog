@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <assert.h>
 
 struct simple_cmd {
 	size_t _num_of_args;
@@ -33,6 +34,21 @@ struct full_cmd {
 	struct simple_cmd *_simple_cmds;
 	int _background;
 };
+
+void free_simple_cmd(struct simple_cmd *simple_cmd) {
+	for (size_t i = 0; i < simple_cmd->_num_of_args; i++)
+		free(*(simple_cmd->_cmd_args) + i);
+	free(simple_cmd->_cmd_args);
+	return;
+}
+
+void free_full_cmd(struct full_cmd *full_cmd) {
+	free(full_cmd->_input_file);
+	free(full_cmd->_output_file);
+	for (size_t i = 0; i < full_cmd->_num_of_simple_cmds; i++)
+		free_simple_cmd(full_cmd->_simple_cmds + i);
+	return;
+}
 
 char*
 get_str(char* line) {
@@ -98,7 +114,24 @@ get_simple_cmd(char *line) {
 		size_t arg_size = 64;
 		char *arg = malloc(sizeof(char) * arg_size);
 		assert(arg);
-		while (line[i] != ' ') {
+		char stop_symbol = ' ';
+		if (line[i] == '"') {
+			stop_symbol = '"';
+			arg[arg_i] = line[i];
+			arg_i++;
+			i++;
+		}
+		while ((line[i] != stop_symbol) || (line[i] != '\0')) {
+			if (line[i] == '\\') {
+				i++;
+				if (line[i] == '"') {
+					arg[arg_i] = '"';
+					i++;
+				} else
+					arg[arg_i] = '\\';
+				arg_i++;
+				continue;
+			}
 			arg[arg_i] = line[i];
 			arg_i++;
 			i++;
@@ -139,7 +172,7 @@ get_full_cmd(char *line) {
 
 	size_t simple_cmd_i = 0;
 	do {
-		simple_cmds[simple_cmd_i] = get_simple_cmd(line);
+		simple_cmds[simple_cmd_i] = *get_simple_cmd(line);
 		simple_cmd_i++;
 		if (simple_cmd_i == simple_cmds_size) {
 			simple_cmds_size += 4;
@@ -153,7 +186,6 @@ get_full_cmd(char *line) {
 	} while (((*line) != '\0') ||
 			 ((*line) != '<') ||
 			 ((*line) != '>'));
-	simple_cmds[simple_cmd_i] = NULL;
 	res->_simple_cmds = simple_cmds;
 	res->_num_of_simple_cmds = simple_cmd_i;
 
@@ -183,12 +215,12 @@ get_full_cmd(char *line) {
 int
 launch(struct full_cmd *full_cmd) {
 	int tmp_in = dup(0);
-	int tmp_out dup(1);
+	int tmp_out = dup(1);
 
 	int fdin;
 	int ret;
 	if(full_cmd->_input_file) {
-		fdin = open(full_cmd->_input_file, O_RONLY);
+		fdin = open(full_cmd->_input_file, O_RDONLY);
 	} else
 		fdin = dup(tmp_in);
 
@@ -213,8 +245,8 @@ launch(struct full_cmd *full_cmd) {
 
 		ret = fork();
 		if (!ret) {
-			execvp(full_cmd->_simple_cmds->_cmd_args[0],
-				   full_cmd->_simple_cmds->_cmd_args);
+			execvp(full_cmd->_simple_cmds[i]._cmd_args[0],
+				   full_cmd->_simple_cmds[i]._cmd_args);
 			perror("execvp");
 			exit(1);
 		}
@@ -234,33 +266,19 @@ launch(struct full_cmd *full_cmd) {
 size_t number_of_builtins = 3;
 
 int
-cd(char **args) {
-	if (args[1] == NULL) {
-		args[1] = "~";
+cd(struct full_cmd *full_cmd) {
+	if (!full_cmd->_simple_cmds->_cmd_args[1]) {
+		full_cmd->_simple_cmds->_cmd_args[1] = "~\0";
 	} else
-		if (chdir(args[1])) {
+		if (chdir(full_cmd->_simple_cmds->_cmd_args[1]))
 			perror("Error");
-	}
 	return 1;
 }
 
 int
-help(char **args)
+exit(struct full_cmd *full_cmd)
 {
-	printf("Type command and press \"Enter\".\n");
-	printf("Builtins:\n");
-
-	for (size_t i = 0; i < number_of_builtins; i++) {
-		printf("  %s\n", builtin_str[i]);
-	}
-	printf("Type \"man\" for another info.\n");
-	return 1;
-}
-
-int
-exit(char **args)
-{
-  return 0;
+	return 0;
 }
 
 char *builtin_str[] = {
@@ -278,77 +296,45 @@ int (*builtin_func[]) (char **) = {
 };
 
 int
-execute(char **args)
+help(struct full_cmd *full_cmd)
 {
-	if (args[0] == NULL)
+	printf("Type command and press \"Enter\".\n");
+	printf("Builtins:\n");
+
+	for (size_t i = 0; i < number_of_builtins; i++)
+		printf("  %s\n", builtin_str[i]);
+	printf("Type \"man\" for another info.\n");
+	return 1;
+}
+
+int
+execute(struct full_cmd *full_cmd)
+{
+	if (full_cmd->_simple_cmds->_cmd_args == NULL)
 		return 1;
 
 	for (size_t i = 0; i < number_of_builtins; i++)
-		if (!strcmp(args[0], builtin_str[i]))
-			return (*builtin_func[i])(args);
+		if (!strcmp(full_cmd->_simple_cmds->_cmd_args[0], builtin_str[i]))
+			return (*builtin_func[i])(full_cmd);
 
-	return launch(args);
+	return launch(full_cmd);
 }
 
 int
 main() {
 	char *line = NULL;
-	char **args;
+	struct full_cmd* full_cmd = NULL;
 	int status;
 
 	do {
 		while (*line != '\0')
 		printf("> ");
 		line = read_line();
-		args = get_command(line);
-		if (*line == '<') {
-			line++;
-			bool flag = false;
-			if (*(line) == '<') {
-				line++;
-				flag = true;
-			}
-			line++;
+		char *pointer = line;
+		full_cmd = get_full_cmd(line);
+		status = execute(full_cmd);
 
-			size_t i = 0;
-			while (line[i] != ' ')
-				i++;
-			line[i] = '\0';
-
-			int file;
-			if (!flag) {
-				file = open(line, O_RDONLY);
-				dup2(file, 0);
-			} else {
-
-			}
-		} else if (*line == '>') {
-			line++;
-			bool flag = false;
-			if (*(line) == '>') {
-				line++;
-				flag = true;
-			}
-			line++;
-
-			size_t i = 0;
-			while (line[i] != ' ')
-				i++;
-			line[i] = '\0';
-
-			int file;
-			if (!flag) {
-				file = open(line, O_CREAT | O_WRONLY);
-				dup2(file, 1);
-			} else {
-				file = open(line, O_CREAT | O_WRONLY | O_APPEND);
-				dup2(file, 1);
-			}
-		}
-
-		status = execute(args);
-
-		free(line);
-		free(args);
+		free(pointer);
+		free(full_cmd);
 	} while (status);
 }
