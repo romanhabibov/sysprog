@@ -10,51 +10,26 @@ char *builtin_str[] = {
 };
 
 char *line = NULL;
+char **tokens = NULL;
+int status = 0;
 
 void
-free_simple_cmd(struct simple_cmd *simple_cmd) {
-	if (simple_cmd->_cmd_args) {
-		char **buf = simple_cmd->_cmd_args;
-		for (size_t i = 0; i < simple_cmd->_num_of_args; i++)
-			free(buf[i]);
-		free(buf);
-	}
-	return;
+init_full_cmd(struct full_cmd *full_cmd) {
+	full_cmd->_background = false;
+	full_cmd->_for_next = 0;
+	full_cmd->_input_file = NULL;
+	full_cmd->_input_flag = false;
+	full_cmd->_output_file = NULL;
+	full_cmd->_output_flag = false;
+	full_cmd->_num_of_simple_cmds = 0;
+	full_cmd->_simple_cmds = NULL;
 }
 
-void
-free_full_cmd(struct full_cmd *full_cmd) {
-	if (full_cmd->_input_file)
-		free(full_cmd->_input_file);
-	if (full_cmd->_output_file)
-		free(full_cmd->_output_file);
+void free_full_cmd(struct full_cmd *full_cmd) {
 	if (full_cmd->_simple_cmds)
-		for (size_t i = 0; i < full_cmd->_num_of_simple_cmds; i++)
-			free_simple_cmd(full_cmd->_simple_cmds + i);
+		free(full_cmd->_simple_cmds);
+	free(full_cmd);
 	return;
-}
-
-char*
-get_str() {
-	size_t size = 64;
-	char* res = malloc(sizeof(char) * size);
-	assert(res);
-
-	size_t i = 0;
-	while(((*line) != '\0') && ((*line) != ' ')) {
-		res[i] = *line;
-		i++;
-		line++;
-		if (i == size) {
-			size += 64;
-			res = realloc(res, sizeof(char) * size);
-			assert(res);
-		}
-	}
-	res[i] = '\0';
-	line++;
-
-	return res;
 }
 
 char *
@@ -64,6 +39,8 @@ read_line() {
 	assert(str_buf);
 
 	int c = getchar();
+	if (c == EOF)
+		exit(1);
 	size_t i = 0;
 	while ((c != '\n') && (c != EOF)) {
 		str_buf[i] = c;
@@ -80,149 +57,207 @@ read_line() {
 	return str_buf;
 }
 
-void
-get_simple_cmd(struct simple_cmd *simple_cmd) {
-	size_t args_size = 64;
-	simple_cmd->_cmd_args = malloc(sizeof(char *) * args_size);
-	assert(simple_cmd->_cmd_args);
+char * __attribute__ ((malloc))
+get_token() {
+	size_t token_i = 0;
+	size_t token_size = 64;
+	char *token = malloc(sizeof(char) * token_size);
+	assert(token);
 
-	size_t num_of_args = 0;
-	while (((*line) != '|') &&
-		   ((*line) != '<') &&
-		   ((*line) != '>')) {
-		size_t arg_i = 0;
-		size_t arg_size = 64;
-		char *arg = malloc(sizeof(char) * arg_size);
-		assert(arg);
-		char stop_symbol = ' ';
-		if ((*line) == '"') {
-			stop_symbol = '"';
-			line++;
-		}
-		while (((*line) != stop_symbol) && ((*line) != '\0')) {
-			if ((*line) == '\\') {
-				line++;
-				if ((*line) == '"') {
-					arg[arg_i] = '"';
-					line++;
-				} else
-					arg[arg_i] = '\\';
-				arg_i++;
-				continue;
-			}
-			arg[arg_i] = (*line);
-			arg_i++;
-			line++;
-
-			if (arg_i == arg_size) {
-				arg_size += 64;
-				arg = realloc(arg, sizeof(char) * arg_size);
-				assert(arg);
-			}
-		}
-		if (stop_symbol == '"')
-			line++;
-		arg[arg_i] = '\0';
-
-		num_of_args++;
-		if (args_size == num_of_args) {
-			args_size += 64;
-			simple_cmd->_cmd_args = \
-			realloc(simple_cmd->_cmd_args, sizeof(char *) * args_size);
-			assert(simple_cmd->_cmd_args);
-		}
-		simple_cmd->_cmd_args[num_of_args - 1] = arg;
-		if ((*line) != '\0')
-			line++;
-		else
-			break;
+	char stop_symbol = ' ';
+	if (((*line) == '"') || ((*line) == '\'')) {
+		stop_symbol = (*line);
+		line++;
 	}
-	simple_cmd->_cmd_args[num_of_args] = NULL;
-	simple_cmd->_num_of_args = num_of_args;
-
-	return;
-}
-
-struct full_cmd *
-get_full_cmd() {
-	struct full_cmd *res = malloc(sizeof(struct full_cmd));
-	assert(res);
-
-	size_t simple_cmds_size = 4;
-	struct simple_cmd *simple_cmds = \
-	malloc(sizeof(struct simple_cmd) * simple_cmds_size);
-	assert(simple_cmds);
-
-	size_t simple_cmd_i = 0;
-	do {
-		get_simple_cmd(simple_cmds + simple_cmd_i);
-		simple_cmd_i++;
-		if (simple_cmd_i == simple_cmds_size) {
-			simple_cmds_size += 4;
-			simple_cmds = \
-			realloc(simple_cmds,
-				sizeof(struct simple_cmd) * simple_cmds_size);
-			assert(simple_cmds);
-		}
-		if ((*line) == '|') {
-			line += 2;
+	while (((*line) != stop_symbol) && ((*line) != '\0')) {
+		if ((*line) == '\\') {
+			line++;
+			if (((*line) == '"') || ((*line) == '\'') || ((*line) == ' ')) {
+				if (stop_symbol != ' ') {
+					token[token_i] = '\\';
+					token_i++;
+				}
+				token[token_i] = (*line);
+				line++;
+			} else
+				token[token_i] = '\\';
+			token_i++;
 			continue;
 		}
-	} while (((*line) != '\0') &&
-			 ((*line) != '<') &&
-			 ((*line) != '>'));
-	res->_simple_cmds = simple_cmds;
-	res->_num_of_simple_cmds = simple_cmd_i;
-
-	if ((*line) == '>') {
-		line++;
-		if ((*line) == '>') {
-			line++;
-			res->_output_flag = true;
-		} else
-			res->_output_flag = false;
+		token[token_i] = (*line);
+		token_i++;
 		line++;
 
-		res->_output_file = get_str(line);
-		if ((*line) == '\0')
-			return res;
-	} else
-		res->_output_file = NULL;
-
-	if ((*line) == '<') {
-		line++;
-		if ((*line) == '<') {
-			line += 2;
-			char *terminator = get_str();
-			int temp_doc = open("temp_doc.txt", O_CREAT | O_WRONLY, 00700);
-			res->_input_file = "temp_doc.txt";
-			res->_input_flag = true;
-			printf("> ");
-			char *temp_str = read_line();
-			while (strcmp(terminator, temp_str)) {
-				write(temp_doc, temp_str, sizeof(temp_str));
-				write(temp_doc, "\n", 1);
-				free(temp_str);
-				printf("> ");
-				temp_str = read_line();
-			}
-			write(temp_doc, EOF, 1);
-			free(temp_str);
-			close(temp_doc);
-		} else {
-			res->_input_file = get_str();
-			res->_input_flag = false;
+		if (token_i == token_size) {
+			token_size += 64;
+			token = realloc(token, sizeof(char) * token_size);
+			assert(token);
 		}
-		if ((*line) == '\0')
-			return res;
-	} else
-		res->_input_file = NULL;
+	}
+	token[token_i] = '\0';
 
-	if ((*line) == '&')
-		res->_background = true;
-	else
-		res->_background = false;
-	return res;
+	if (stop_symbol != ' ')
+		line++;
+
+	if ((*line) == ' ')
+		line++;
+
+	return token;
+}
+
+size_t
+get_tokens() {
+	size_t tokens_size = 32;
+	tokens = malloc(tokens_size * sizeof(char *));
+	assert(tokens);
+
+	size_t number_of_tokens = 0;
+	while ((*line) != '\0') {
+		char *token = get_token();
+
+		number_of_tokens++;
+		if (tokens_size == number_of_tokens) {
+			tokens_size += 32;
+			tokens = realloc(tokens, sizeof(char *) * tokens_size);
+			assert(tokens);
+		}
+		tokens[number_of_tokens - 1] = token;
+	}
+	tokens[number_of_tokens] = NULL;
+
+	return number_of_tokens;
+}
+
+struct full_cmd * __attribute__ ((malloc))
+get_full_cmds(size_t *number_of_full_cmds) {
+	size_t full_cmds_size = 4;
+	struct full_cmd *full_cmds = malloc(full_cmds_size * sizeof(struct full_cmd));
+	assert(full_cmds);
+
+	*number_of_full_cmds = 0;
+	while ((*tokens) != NULL) {
+		init_full_cmd(full_cmds + *number_of_full_cmds);
+		full_cmds[*number_of_full_cmds]._simple_cmds = \
+		get_simple_cmds(&full_cmds[*number_of_full_cmds]._num_of_simple_cmds);
+		while ((*tokens) != NULL) {
+			if (!strcmp((*tokens), "&")) {
+				*tokens = NULL;
+				tokens++;
+				full_cmds[*number_of_full_cmds]._for_next = 0;
+				full_cmds[*number_of_full_cmds]._background = true;
+				break;
+			}
+			if (!strcmp((*tokens), "&&")) {
+				*tokens = NULL;
+				tokens++;
+				full_cmds[*number_of_full_cmds]._for_next = 1;
+				break;
+			}
+			if (!strcmp((*tokens), "||")) {
+				*tokens = NULL;
+				tokens++;
+				full_cmds[*number_of_full_cmds]._for_next = 2;
+				break;
+			}
+			if (!strcmp((*tokens), ">")) {
+				*tokens = NULL;
+				tokens++;
+				if ((*tokens) == NULL)
+					break;
+				full_cmds[*number_of_full_cmds]._output_file = (*tokens);
+				full_cmds[*number_of_full_cmds]._output_flag = false;
+				tokens++;
+			} else if (!strcmp((*tokens), ">>")) {
+				*tokens = NULL;
+				tokens++;
+				if ((*tokens) == NULL)
+					break;
+				full_cmds[*number_of_full_cmds]._output_file = (*tokens);
+				full_cmds[*number_of_full_cmds]._output_flag = true;
+				tokens++;
+			} else if (!strcmp((*tokens), "<")) {
+				*tokens = NULL;
+				tokens++;
+				if ((*tokens) == NULL)
+					break;
+				full_cmds[*number_of_full_cmds]._input_file = (*tokens);
+				full_cmds[*number_of_full_cmds]._input_flag = false;
+				tokens++;
+			} else if (!strcmp((*tokens), "<<")) {
+				*tokens = NULL;
+				tokens++;
+				if ((*tokens) == NULL)
+					break;
+				char *terminator = (*tokens);
+				int temp_doc = open("temp_doc.txt", O_CREAT | O_WRONLY, 00700);
+				full_cmds[*number_of_full_cmds]._input_file = "temp_doc";
+				full_cmds[*number_of_full_cmds]._input_flag = true;
+				printf("> ");
+				char *temp_str = read_line();
+				while (strcmp(terminator, temp_str)) {
+					write(temp_doc, temp_str, sizeof(temp_str));
+					write(temp_doc, "\n", 1);
+					free(temp_str);
+					printf("> ");
+					temp_str = read_line();
+				}
+				free(temp_str);
+				close(temp_doc);
+				tokens++;
+			}
+			else
+				break;
+		}
+		(*number_of_full_cmds)++;
+		if (*number_of_full_cmds == full_cmds_size) {
+			full_cmds_size += 4;
+			full_cmds = realloc(full_cmds, sizeof(char) * full_cmds_size);
+			assert(full_cmds);
+		}
+	}
+
+	return full_cmds;
+}
+
+struct simple_cmd * __attribute__ ((malloc))
+get_simple_cmds(size_t *number_of_simple_cmds) {
+	size_t simple_cmds_size = 4;
+	struct simple_cmd *simple_cmds = malloc(simple_cmds_size * sizeof(struct simple_cmd));
+	assert(simple_cmds);
+
+	size_t i = 0;
+	while (tokens[i] != NULL) {
+		if (!(strcmp(tokens[i], ">") &&
+			  strcmp(tokens[i], "<") &&
+			  strcmp(tokens[i], ">>") &&
+			  strcmp(tokens[i], "<<") &&
+			  strcmp(tokens[i], "&") &&
+			  strcmp(tokens[i], "&&") &&
+			  strcmp(tokens[i], "||")))
+			break;
+		if (!strcmp(tokens[i], "|")) {
+			simple_cmds[*number_of_simple_cmds]._num_of_args = i;
+			simple_cmds[*number_of_simple_cmds]._cmd_args = tokens;
+			(*number_of_simple_cmds)++;
+			tokens[i] = NULL;
+			tokens += i + 1;
+			i = 0;
+		} else
+			i++;
+
+		if (*number_of_simple_cmds == simple_cmds_size) {
+			simple_cmds_size += 4;
+			simple_cmds = \
+			realloc(simple_cmds, sizeof(struct simple_cmd) * simple_cmds_size);
+			assert(simple_cmds);
+		}
+	}
+	simple_cmds[*number_of_simple_cmds]._num_of_args = i;
+	simple_cmds[*number_of_simple_cmds]._cmd_args = tokens;
+	(*number_of_simple_cmds)++;
+	tokens += i;
+
+	return simple_cmds;
 }
 
 int
@@ -244,13 +279,11 @@ launch(struct full_cmd *full_cmd) {
 		if ((full_cmd->_num_of_simple_cmds - 1) == i) {
 			if (full_cmd->_output_file)
 				if (full_cmd->_output_flag)
-					fdout = \
-					open(full_cmd->_output_file,
-					     O_CREAT | O_WRONLY | O_APPEND, 00700);
+					fdout = open(full_cmd->_output_file,
+								 O_CREAT | O_WRONLY | O_APPEND, 00700);
 				else
-					fdout = \
-					open(full_cmd->_output_file,
-					     O_CREAT | O_WRONLY | O_TRUNC, 00700);
+					fdout = open(full_cmd->_output_file,
+								 O_CREAT | O_WRONLY | O_TRUNC, 00700);
 			else
 				fdout = dup(tmp_out);
 		} else {
@@ -263,12 +296,16 @@ launch(struct full_cmd *full_cmd) {
 		dup2(fdout, 1);
 		close(fdout);
 
-		ret = fork();
-		if (!ret) {
-			execvp(full_cmd->_simple_cmds[i]._cmd_args[0],
-				   full_cmd->_simple_cmds[i]._cmd_args);
+		switch (ret = fork()) {
+		case -1 :
+			status = -1;
+			perror("fork");
+			break;
+		case 0 :
+			status = execvp(full_cmd->_simple_cmds[i]._cmd_args[0],
+							full_cmd->_simple_cmds[i]._cmd_args);
 			perror("execvp");
-			exit(1);
+			exit(status);
 		}
 	}
 
@@ -280,13 +317,14 @@ launch(struct full_cmd *full_cmd) {
 	close(tmp_out);
 
 	if (!full_cmd->_background)
-		waitpid(ret, NULL);
+		waitpid(ret, &status, 0);
 
-	return 1;
+	return status;
 }
 
 int
-execute(struct full_cmd *full_cmd) {
+execute(struct full_cmd *full_cmd)
+{
 	if (full_cmd->_simple_cmds->_cmd_args == NULL)
 		return 1;
 
@@ -308,7 +346,7 @@ execute(struct full_cmd *full_cmd) {
 		return 1;
 	}
 	else if (!strcmp(full_cmd->_simple_cmds->_cmd_args[0], "exit"))
-		return 0;
+		exit(1);
 
 	return launch(full_cmd);
 }

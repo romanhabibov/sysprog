@@ -1,11 +1,15 @@
-#include <stdbool.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <stdbool.h>
+#include <string.h>
+#include <stdlib.h>
 
 struct simple_cmd {
 	size_t _num_of_args;
@@ -13,7 +17,9 @@ struct simple_cmd {
 };
 
 struct full_cmd {
+
 	size_t _num_of_simple_cmds;
+	int _for_next;
 	bool _input_flag;
 	bool _output_flag;
 	bool _background;
@@ -23,22 +29,24 @@ struct full_cmd {
 };
 
 void
-free_simple_cmd(struct simple_cmd *simple_cmd);
+init_full_cmd(struct full_cmd *full_cmd);
 
-void
-free_full_cmd(struct full_cmd *full_cmd);
-
-char*
-get_str();
+void free_full_cmd(struct full_cmd *full_cmd);
 
 char *
 read_line();
 
-void
-get_simple_cmd(struct simple_cmd *simple_cmd);
+char * __attribute__ ((malloc))
+get_token();
 
-struct full_cmd *
-get_full_cmd();
+size_t
+get_tokens();
+
+struct full_cmd * __attribute__ ((malloc))
+get_full_cmds(size_t *number_of_full_cmds);
+
+struct simple_cmd * __attribute__ ((malloc))
+get_simple_cmds(size_t *number_of_simple_cmds);
 
 int
 launch(struct full_cmd *full_cmd);
