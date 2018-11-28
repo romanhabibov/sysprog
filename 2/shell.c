@@ -54,6 +54,16 @@ read_line() {
 		}
 	}
 	str_buf[i] = '\0';
+
+	if (i)
+		if (str_buf[i - 1] == '\\') {
+			printf("> ");
+			char *addition = read_line();
+			size_t addition_size = strlen(addition) + 1;
+			str_buf = realloc(str_buf, i + addition_size);
+			memcpy(str_buf + i - 1, addition, addition_size);
+			free(addition);
+		}
 	return str_buf;
 }
 
@@ -65,22 +75,24 @@ get_token() {
 	assert(token);
 
 	char stop_symbol = ' ';
-	if (((*line) == '"') || ((*line) == '\'')) {
+	if (((*line) == '\"') || ((*line) == '\'')) {
 		stop_symbol = (*line);
 		line++;
 	}
 	while (((*line) != stop_symbol) && ((*line) != '\0')) {
 		if ((*line) == '\\') {
 			line++;
-			if (((*line) == '"') || ((*line) == '\'') || ((*line) == ' ')) {
+			if (((*line) == '\"') || ((*line) == '\'') || ((*line) == ' ')) {
 				if (stop_symbol != ' ') {
 					token[token_i] = '\\';
 					token_i++;
 				}
 				token[token_i] = (*line);
 				line++;
-			} else
+			} else if ((*line) == '\\') {
 				token[token_i] = '\\';
+				line++;
+			}
 			token_i++;
 			continue;
 		}
@@ -112,7 +124,7 @@ get_tokens() {
 	assert(tokens);
 
 	size_t number_of_tokens = 0;
-	while ((*line) != '\0') {
+	while ((*line != '\0') && (*line != '#')) {
 		char *token = get_token();
 
 		number_of_tokens++;
@@ -189,20 +201,26 @@ get_full_cmds(size_t *number_of_full_cmds) {
 				if ((*tokens) == NULL)
 					break;
 				char *terminator = (*tokens);
-				int temp_doc = open("temp_doc.txt", O_CREAT | O_WRONLY, 00700);
-				full_cmds[*number_of_full_cmds]._input_file = "temp_doc";
+				char template[] = "XXXXXX";
+				char *temp = mkdtemp(template);
+				rmdir(temp);
+				char str_buf[10];
+				sprintf(str_buf, "%s.txt", temp);
+				FILE* temp_doc = fopen(str_buf, "wt");
+				char *file = malloc(10);
+				strcpy(file, str_buf);
+				full_cmds[*number_of_full_cmds]._input_file = file;
 				full_cmds[*number_of_full_cmds]._input_flag = true;
 				printf("> ");
-				char *temp_str = read_line();
+				char *temp_str = read_line(0);
 				while (strcmp(terminator, temp_str)) {
-					write(temp_doc, temp_str, sizeof(temp_str));
-					write(temp_doc, "\n", 1);
+					fprintf(temp_doc, "%s\n", temp_str);
 					free(temp_str);
 					printf("> ");
-					temp_str = read_line();
+					temp_str = read_line(0);
 				}
 				free(temp_str);
-				close(temp_doc);
+				fclose(temp_doc);
 				tokens++;
 			}
 			else
@@ -211,7 +229,7 @@ get_full_cmds(size_t *number_of_full_cmds) {
 		(*number_of_full_cmds)++;
 		if (*number_of_full_cmds == full_cmds_size) {
 			full_cmds_size += 4;
-			full_cmds = realloc(full_cmds, sizeof(char) * full_cmds_size);
+			full_cmds = realloc(full_cmds, sizeof(struct full_cmd) * full_cmds_size);
 			assert(full_cmds);
 		}
 	}

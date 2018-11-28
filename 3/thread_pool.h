@@ -1,6 +1,10 @@
 #ifndef THREAD_POOL_DEFINED
 #define THREAD_POOL_DEFINED
 
+#define NOT_PUSHED 0
+#define IN_POOL 1
+#define FINISHED 2
+
 struct thread_pool;
 struct thread_task;
 

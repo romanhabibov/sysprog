@@ -1,13 +1,5 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required (VERSION 2.6)
 
-project(3)
+project (3)
 
-set(SOURCE_EXE main.c)
-
-set(SOURCE_LIB thread_pool.c)
-
-add_library(shell STATIC ${SOURCE_LIB})
-
-add_executable(main ${SOURCE_EXE})
-
-target_link_libraries(main thread_pool)
+add_executable(3 3.cpp)
