@@ -124,6 +124,7 @@ get_tokens() {
 	assert(tokens);
 
 	size_t number_of_tokens = 0;
+
 	while ((*line != '\0') && (*line != '#')) {
 		char *token = get_token();
 
@@ -217,7 +218,7 @@ get_full_cmds(size_t *number_of_full_cmds) {
 					fprintf(temp_doc, "%s\n", temp_str);
 					free(temp_str);
 					printf("> ");
-					temp_str = read_line(0);
+					temp_str = read_line();
 				}
 				free(temp_str);
 				fclose(temp_doc);
