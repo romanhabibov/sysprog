@@ -75,6 +75,8 @@ get_token() {
 	assert(token);
 
 	char stop_symbol = ' ';
+	while (*line == stop_symbol)
+		line++;
 	if (((*line) == '\"') || ((*line) == '\'')) {
 		stop_symbol = (*line);
 		line++;
@@ -205,15 +207,16 @@ get_full_cmds(size_t *number_of_full_cmds) {
 				char template[] = "XXXXXX";
 				char *temp = mkdtemp(template);
 				rmdir(temp);
-				char str_buf[10];
-				sprintf(str_buf, "%s.txt", temp);
+				size_t size = snprintf(NULL, 0, "XXXXXX.txt"); 
+				char *str_buf = malloc(size);
+				snprintf(str_buf, size, "%s.txt", temp);
 				FILE* temp_doc = fopen(str_buf, "wt");
-				char *file = malloc(10);
+				char *file = malloc(size);
 				strcpy(file, str_buf);
 				full_cmds[*number_of_full_cmds]._input_file = file;
 				full_cmds[*number_of_full_cmds]._input_flag = true;
 				printf("> ");
-				char *temp_str = read_line(0);
+				char *temp_str = read_line();
 				while (strcmp(terminator, temp_str)) {
 					fprintf(temp_doc, "%s\n", temp_str);
 					free(temp_str);
