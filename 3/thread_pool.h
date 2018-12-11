@@ -1,9 +1,6 @@
+#include <stdbool.h>
 #ifndef THREAD_POOL_DEFINED
 #define THREAD_POOL_DEFINED
-
-#define NOT_PUSHED 0
-#define IN_POOL 1
-#define FINISHED 2
 
 struct thread_pool;
 struct thread_task;
@@ -21,6 +18,13 @@ enum thread_pool_errcode {
 	TPOOL_ERR_HAS_TASKS,
 	TPOOL_ERR_TASK_NOT_PUSHED,
 	TPOOL_ERR_TASK_IN_POOL,
+};
+
+enum task_status {
+	NOT_PUSHED = 0,
+	PENDING = 1,
+	PROCEED = 2,
+	FINISHED = 3,
 };
 
 /** Thread pool API. */
