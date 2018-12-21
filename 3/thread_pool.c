@@ -7,6 +7,7 @@ struct thread_task {
 	thread_task_f _function;
 	void *_returned_code;
 	int _status;
+	struct thread_pool *_pool;
 	struct thread_task *_next;
 	void *_arg;
 };
@@ -19,8 +20,8 @@ struct thread_pool {
 	size_t _tasks_count;
 	pthread_mutex_t _pool_data_mutex;
 	pthread_cond_t _pool_cond_var;
-	thread_task_f *_head;
-	thread_task_f *_tail;
+	struct thread_task *_head;
+	struct thread_task *_tail;
 	pthread_t *_threads;
 	/* PUT HERE OTHER MEMBERS */
 };
@@ -65,26 +66,26 @@ static void *
 task_runner(void *arg)
 {
 	struct thread_task *thread = (struct thread_task *) arg;
-	pthread_mutex_lock(&(pool->_pool_data_mutex));
-	if (pool->_idle_thread_count)
-		pool->_idle_thread_count--;
-	pool->_proceed_thread_count++;
-	pthread_mutex_unlock(&(pool->_pool_data_mutex));
+	pthread_mutex_lock(&(thread->_pool->_pool_data_mutex));
+	if (thread->_pool->_idle_thread_count)
+		thread->_pool->_idle_thread_count--;
+	thread->_pool->_proceed_thread_count++;
+	pthread_mutex_unlock(&(thread->_pool->_pool_data_mutex));
 	thread->_returned_code = thread->_function(thread->_arg);
 	thread->_status = FINISHED;
-	pthread_mutex_lock(&(pool->_pool_data_mutex));
-	pool->_proceed_thread_count--;
-	pool->_idle_thread_count++;
-	pthread_mutex_unlock(&(pool->_pool_data_mutex));
+	pthread_mutex_lock(&(thread->_pool->_pool_data_mutex));
+	thread->_pool->_proceed_thread_count--;
+	thread->_pool->_idle_thread_count++;
+	pthread_mutex_unlock(&(thread->_pool->_pool_data_mutex));
 	for(;;) {
-		pthread_mutex_lock(&(pool->_pool_data_mutex));
+		pthread_mutex_lock(&(thread->_pool->_pool_data_mutex));
 		while(!NULL)
-			pthread_cond_wait(&(pool->_pool_cond_var), &(pool->_pool_data_mutex));
+			pthread_cond_wait(&(thread->_pool->_pool_cond_var), &(thread->_pool->_pool_data_mutex));
 		/* Grab new task.*/
-		thread = pool->_head;
-		pool->_head = thread->_next;
-		pool->_tasks_count--;
-		pthread_mutex_unlock(&(pool->_pool_data_mutex));
+		thread = thread->_pool->_head;
+		thread->_pool->_head = thread->_next;
+		thread->_pool->_tasks_count--;
+		pthread_mutex_unlock(&(thread->_pool->_pool_data_mutex));
 		thread->_returned_code = thread->_function(thread->_arg);
 		thread->_status = FINISHED;
 	}
@@ -95,6 +96,7 @@ thread_pool_push_task(struct thread_pool *pool, struct thread_task *task)
 {
 	if (pool->_tasks_count == TPOOL_MAX_TASKS)
 		return TPOOL_ERR_TOO_MANY_TASKS;
+	task->_pool = pool;
 	if (!pool->_created_thread_count) {
 		pthread_create(&(pool->_threads[0]), NULL, &task_runner, (void *) task);
 		pool->_created_thread_count++;
@@ -173,7 +175,7 @@ thread_task_join(struct thread_task *task, void **result)
 int
 thread_task_delete(struct thread_task *task)
 {
-	if ((task->_status == PENDING ||
+	if ((task->_status == PENDING) ||
 		(task->_status == PROCEED))
 		return TPOOL_ERR_TASK_IN_POOL;
 	free(task);
